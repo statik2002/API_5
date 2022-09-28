@@ -91,8 +91,7 @@ def superjob_vacancies(token, keyword):
     url = 'https://api.superjob.ru/2.0/vacancies/'
 
     headers = {
-        'Authorization': f'Bearer r.137022255.155c8bc62ac576ac37a78ae617e286684904fab1.d3d22e52914d63f61c886c444a1cb20d0ed98003',
-        'X-Api-App-Id': 'v3.r.137022255.155c8bc62ac576ac37a78ae617e286684904fab1.d3d22e52914d63f61c886c444a1cb20d0ed98003',
+        'X-Api-App-Id': f'{token}',
         'Content-Type': 'application / x - www - form - urlencoded',
     }
 
