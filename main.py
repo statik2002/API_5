@@ -1,4 +1,5 @@
 from pprint import pprint
+from statistics import mean
 
 import requests
 
@@ -35,7 +36,6 @@ def vacancy_count(search_text):
         'clusters': True,
         'per_page': 0,
         'search_field': 'description',
-        'specialization': '1.221',
         'area': 1,
     }
 
@@ -45,23 +45,29 @@ def vacancy_count(search_text):
     return response.json()
 
 
-def predict_rub_salary(vacancy):
+def predict_rub_salary(vacancies):
 
-    salary = vacancy['salary']
+    average_salary = []
 
-    if not salary:
-        return None
+    for vacancy in vacancies:
+        salary = vacancy['salary']
 
-    if salary['currency'] != 'RUR':
-        return None
+        if not salary:
+            continue
 
-    if salary['from'] and salary['to']:
-        return (salary['from'] + salary['to'])//2
+        if salary['currency'] != 'RUR':
+            continue
 
-    if salary['from'] and not salary['to']:
-        return int(salary['from']*1.2)
-    else:
-        return int(salary['to']*0.8)
+        if salary['from'] and salary['to']:
+            average_salary.append((salary['from'] + salary['to'])//2)
+
+        if salary['from'] and not salary['to']:
+            average_salary.append(int(salary['from']*1.2))
+
+        if not salary['from'] and salary['to']:
+            average_salary.append(int(salary['to']*0.8))
+
+    return int(mean(average_salary)), len(average_salary)
 
 
 def main():
@@ -89,27 +95,40 @@ def main():
 
     }
 
-    response = spec_vacancy(search_text='Программист Python')
+    python_vacancies = spec_vacancy(search_text='Программист Python')
+    python_average_salary, python_vacancies_processed = predict_rub_salary(python_vacancies['items'])
+    python_total_vacancies = python_vacancies['found']
+    python_stat = {
+        "vacancies_found": python_total_vacancies,
+        "vacancies_processed": python_vacancies_processed,
+        "average_salary": python_average_salary
+    }
 
-    #pprint(response['items'][0]['salary'])
+    java_vacancies = spec_vacancy(search_text='программист java')
+    java_average_salary, java_vacancies_processed = predict_rub_salary(java_vacancies['items'])
+    java_total_vacancies = java_vacancies['found']
+    java_stat = {
+        "vacancies_found": java_total_vacancies,
+        "vacancies_processed": java_vacancies_processed,
+        "average_salary": java_average_salary
+    }
 
-    for vacancy in response['items']:
-        #print(vacancy['salary'])
-        print(predict_rub_salary(vacancy))
+    javascript_vacancies = spec_vacancy(search_text='Программист JavaScript')
+    javascript_average_salary, javascript_vacancies_processed = predict_rub_salary(javascript_vacancies['items'])
+    javascript_total_vacancies = java_vacancies['found']
+    javascript_stat = {
+        "vacancies_found": javascript_total_vacancies,
+        "vacancies_processed": javascript_vacancies_processed,
+        "average_salary": javascript_average_salary
+    }
 
-    #response_python = vacancy_count(search_text='Программист Python')
-    #response_java = vacancy_count(search_text='Программист Java')
-    #response_javascript = vacancy_count(search_text='Программист JavaScript')
+    vacancy_statistic = {
+        'Python': python_stat,
+        'Java': java_stat,
+        'Javascript': javascript_stat
+    }
 
-    #pprint(response_python)
-
-    #vacancies_count = {
-    #    'Python': response_python['found'],
-    #    'Java': response_java['found'],
-    #    'JavaScript': response_javascript['found'],
-    #}
-
-    #pprint(vacancies_count)
+    pprint(vacancy_statistic)
 
 
 if __name__ == '__main__':
