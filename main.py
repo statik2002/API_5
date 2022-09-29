@@ -1,5 +1,5 @@
+import argparse
 import os
-from pprint import pprint
 from statistics import mean
 from itertools import count
 import requests
@@ -11,6 +11,7 @@ def get_hh_vacancies(search_text):
     url = 'https://api.hh.ru/vacancies'
 
     result_vacancies = []
+    total_vacancies_found = 0
 
     headers = {
         'User - Agent': 'hh_client / 1.0(hh_client - statik2002@gmail.com)',
@@ -20,8 +21,7 @@ def get_hh_vacancies(search_text):
 
         params = {
             'text': search_text,
-            'search_field': 'description',
-            'specialization': '1.221',
+            'search_field': 'name',
             'area': 1,
             'page': page,
         }
@@ -35,8 +35,9 @@ def get_hh_vacancies(search_text):
             break
 
         result_vacancies.append(vacancy_page)
+        total_vacancies_found = vacancy_page['found']
 
-    return result_vacancies
+    return result_vacancies, total_vacancies_found
 
 
 def vacancy_count(search_text):
@@ -60,7 +61,7 @@ def vacancy_count(search_text):
     return response.json()
 
 
-def predict_rub_salary(vacancies, profession):
+def predict_rub_salary(vacancies):
 
     average_salary = []
 
@@ -82,6 +83,9 @@ def predict_rub_salary(vacancies, profession):
 
             if not salary['from'] and salary['to']:
                 average_salary.append(int(salary['to']*0.8))
+
+    if len(average_salary) <= 0:
+        return 0, 1
 
     return int(mean(average_salary)), len(average_salary)
 
@@ -109,15 +113,10 @@ def superjob_vacancies(token, keyword):
 
         vacancy_page_json = response.json()
 
-        #vacancies = [vacancy for vacancy in vacancy_page_json['objects']]
-
         vacancy_pages.append(vacancy_page_json)
 
         if page >= vacancy_page_json['total']/((page+1)*20):
             break
-
-        #for vacancy in response.json()['objects']:
-        #    print(f"{vacancy['profession']} / {vacancy['town']['title']}")
 
     return vacancy_pages, vacancy_page_json['total']
 
@@ -146,16 +145,32 @@ def predict_rub_salary_for_superJob(vacancy_pages):
             else:
                 continue
 
+    if len(salary) <= 0:
+        return 0, 1
+
     return int(mean(salary)), vacancy_proceeded_count
 
 
 def print_vacancies_stat(vacancies_stat, table_title):
 
-    data = []
-    data.append(['Языки программирования', 'Вакансий найдено', 'Вакансий обработано', 'Средняя зарплата'])
+    data = list()
+    data.append(
+        [
+            'Языки программирования',
+            'Вакансий найдено',
+            'Вакансий обработано',
+            'Средняя зарплата'
+        ]
+    )
 
     for profession, value in vacancies_stat.items():
-        data.append([profession, value['vacancies_found'], value['vacancies_processed'], value['average_salary']])
+        data.append(
+            [profession,
+             value['vacancies_found'],
+             value['vacancies_processed'],
+             value['average_salary']
+             ]
+        )
 
     table = AsciiTable(data)
     table.title = table_title
@@ -164,31 +179,48 @@ def print_vacancies_stat(vacancies_stat, table_title):
 
 def main():
 
-    load_dotenv()
+    parser = argparse.ArgumentParser(
+        description='Скрипт для анализа вакансий по языкам'
+                    ' программирования на hh.ru и superjob.ru',
+    )
+    parser.add_argument(
+        '--p',
+        help='список языков программирования для поиска через ,',
+        default='Python,Java,Javascript,C#,Objective-C,c,C++,ruby,go,1c'
+    )
+    args = parser.parse_args()
+    professions = args.p.split(',')
 
-    professions = ['Python', 'Java', 'Javascript', 'C#', 'Objective-C', 'c', 'C++', 'ruby', 'go', '1c']
+    load_dotenv()
 
     superjob_token = os.environ['SUPERJOB_TOKEN']
 
     superjob_vacancies_stat = {}
     hh_vacancies_stat = {}
 
-    for profesion in professions:
-        superjob_all_vacancies, total_vacancies = superjob_vacancies(superjob_token, profesion)
-        avg_salary, vacancy_proceeded_count = predict_rub_salary_for_superJob(superjob_all_vacancies)
+    for profession in professions:
+        superjob_all_vacancies, total_vacancies = superjob_vacancies(
+            superjob_token, profession.strip()
+        )
+        avg_salary, vacancy_proceeded_count = predict_rub_salary_for_superJob(
+            superjob_all_vacancies
+        )
         vacancy_sat = {
             "vacancies_found": total_vacancies,
             "vacancies_processed": vacancy_proceeded_count,
             "average_salary": avg_salary,
         }
-        superjob_vacancies_stat.update({profesion: vacancy_sat})
+        superjob_vacancies_stat.update({profession: vacancy_sat})
 
     print_vacancies_stat(superjob_vacancies_stat, 'SuperJob Moscow')
 
     for profession in professions:
-        profession_vacancies = get_hh_vacancies(search_text=profession)
-        profession_average_salary, profession_vacancies_processed = predict_rub_salary(profession_vacancies, profession)
-        profession_total_vacancies = profession_vacancies[0]['found']
+        profession_vacancies, profession_total_vacancies = get_hh_vacancies(
+            search_text=profession.strip()
+        )
+        profession_average_salary, profession_vacancies_processed = predict_rub_salary(
+            profession_vacancies
+        )
         profession_stat = {
             "vacancies_found": profession_total_vacancies,
             "vacancies_processed": profession_vacancies_processed,
