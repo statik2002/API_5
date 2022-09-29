@@ -1,13 +1,13 @@
-import json
 import os
 from pprint import pprint
 from statistics import mean
 from itertools import count
 import requests
 from dotenv import load_dotenv
+from terminaltables import AsciiTable
 
 
-def spec_vacancy(search_text):
+def get_hh_vacancies(search_text):
     url = 'https://api.hh.ru/vacancies'
 
     result_vacancies = []
@@ -31,7 +31,7 @@ def spec_vacancy(search_text):
 
         vacancy_page = response.json()
 
-        if page >= vacancy_page['pages']:
+        if page >= vacancy_page['pages']-1:
             break
 
         result_vacancies.append(vacancy_page)
@@ -60,7 +60,7 @@ def vacancy_count(search_text):
     return response.json()
 
 
-def predict_rub_salary(vacancies):
+def predict_rub_salary(vacancies, profession):
 
     average_salary = []
 
@@ -90,98 +90,113 @@ def superjob_vacancies(token, keyword):
 
     url = 'https://api.superjob.ru/2.0/vacancies/'
 
+    vacancy_pages = []
+
     headers = {
         'X-Api-App-Id': f'{token}',
         'Content-Type': 'application / x - www - form - urlencoded',
     }
 
-    params = {
-        'town': 4,
-        'keywords': {keyword},
-    }
+    for page in count(0):
+        params = {
+            'town': 4,
+            'keywords': {keyword},
+            'page': page,
+        }
 
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
 
-    vacancies = [vacancy for vacancy in response.json()['objects']]
+        vacancy_page_json = response.json()
 
-    #for vacancy in response.json()['objects']:
-    #    print(f"{vacancy['profession']} / {vacancy['town']['title']}")
+        #vacancies = [vacancy for vacancy in vacancy_page_json['objects']]
 
-    return vacancies
+        vacancy_pages.append(vacancy_page_json)
+
+        if page >= vacancy_page_json['total']/((page+1)*20):
+            break
+
+        #for vacancy in response.json()['objects']:
+        #    print(f"{vacancy['profession']} / {vacancy['town']['title']}")
+
+    return vacancy_pages, vacancy_page_json['total']
 
 
-def predict_rub_salary_for_superJob(vacancy):
+def predict_rub_salary_for_superJob(vacancy_pages):
 
     salary = []
+    vacancy_proceeded_count = 0
 
-    if vacancy['currency'] != 'rub':
-        return None
+    for vacancy_page in vacancy_pages:
+        for vacancy in vacancy_page['objects']:
+            if vacancy['currency'] != 'rub':
+                continue
 
-    payment_from = vacancy['payment_from']
-    payment_to = vacancy['payment_to']
-    if payment_from != 0 and payment_to != 0:
-        salary.append((payment_from+payment_to)//2)
-    elif payment_from != 0 and payment_to == 0:
-        salary.append(payment_from*1.2)
-    elif payment_from == 0 and payment_to != 0:
-        salary.append(payment_to*0.8)
-    else:
-        return None
+            payment_from = vacancy['payment_from']
+            payment_to = vacancy['payment_to']
+            if payment_from != 0 and payment_to != 0:
+                salary.append((payment_from+payment_to)//2)
+                vacancy_proceeded_count += 1
+            elif payment_from != 0 and payment_to == 0:
+                salary.append(payment_from*1.2)
+                vacancy_proceeded_count += 1
+            elif payment_from == 0 and payment_to != 0:
+                salary.append(payment_to*0.8)
+                vacancy_proceeded_count += 1
+            else:
+                continue
 
-    return int(mean(salary))
+    return int(mean(salary)), vacancy_proceeded_count
+
+
+def print_vacancies_stat(vacancies_stat, table_title):
+
+    data = []
+    data.append(['Языки программирования', 'Вакансий найдено', 'Вакансий обработано', 'Средняя зарплата'])
+
+    for profession, value in vacancies_stat.items():
+        data.append([profession, value['vacancies_found'], value['vacancies_processed'], value['average_salary']])
+
+    table = AsciiTable(data)
+    table.title = table_title
+    print(table.table)
 
 
 def main():
 
     load_dotenv()
 
-    professions = ['Программист SQL', ]
+    professions = ['Python', 'Java', 'Javascript', 'C#', 'Objective-C', 'c', 'C++', 'ruby', 'go', '1c']
 
     superjob_token = os.environ['SUPERJOB_TOKEN']
-    superjob_id = os.environ['SUPERJOB_ID']
 
-    superjob_all_vacancies = superjob_vacancies(superjob_token, 'Программист')
-    for vacancy in superjob_all_vacancies:
-        avg_salary = predict_rub_salary_for_superJob(vacancy)
-        print(f"{vacancy['profession']}', {vacancy['town']['title']}', {avg_salary}")
+    superjob_vacancies_stat = {}
+    hh_vacancies_stat = {}
 
-    """
-    python_vacancies = spec_vacancy(search_text='Программист Python')
-    python_average_salary, python_vacancies_processed = predict_rub_salary(python_vacancies)
-    python_total_vacancies = python_vacancies[0]['found']
-    python_stat = {
-        "vacancies_found": python_total_vacancies,
-        "vacancies_processed": python_vacancies_processed,
-        "average_salary": python_average_salary
-    }
+    for profesion in professions:
+        superjob_all_vacancies, total_vacancies = superjob_vacancies(superjob_token, profesion)
+        avg_salary, vacancy_proceeded_count = predict_rub_salary_for_superJob(superjob_all_vacancies)
+        vacancy_sat = {
+            "vacancies_found": total_vacancies,
+            "vacancies_processed": vacancy_proceeded_count,
+            "average_salary": avg_salary,
+        }
+        superjob_vacancies_stat.update({profesion: vacancy_sat})
 
-    java_vacancies = spec_vacancy(search_text='программист java')
-    java_average_salary, java_vacancies_processed = predict_rub_salary(java_vacancies)
-    java_total_vacancies = java_vacancies[0]['found']
-    java_stat = {
-        "vacancies_found": java_total_vacancies,
-        "vacancies_processed": java_vacancies_processed,
-        "average_salary": java_average_salary
-    }
+    print_vacancies_stat(superjob_vacancies_stat, 'SuperJob Moscow')
 
-    javascript_vacancies = spec_vacancy(search_text='Программист JavaScript')
-    javascript_average_salary, javascript_vacancies_processed = predict_rub_salary(javascript_vacancies)
-    javascript_total_vacancies = java_vacancies[0]['found']
-    javascript_stat = {
-        "vacancies_found": javascript_total_vacancies,
-        "vacancies_processed": javascript_vacancies_processed,
-        "average_salary": javascript_average_salary
-    }
+    for profession in professions:
+        profession_vacancies = get_hh_vacancies(search_text=profession)
+        profession_average_salary, profession_vacancies_processed = predict_rub_salary(profession_vacancies, profession)
+        profession_total_vacancies = profession_vacancies[0]['found']
+        profession_stat = {
+            "vacancies_found": profession_total_vacancies,
+            "vacancies_processed": profession_vacancies_processed,
+            "average_salary": profession_average_salary
+        }
+        hh_vacancies_stat.update({profession: profession_stat})
 
-    vacancy_statistic = {
-        'Python': python_stat,
-        'Java': java_stat,
-        'Javascript': javascript_stat
-    }
-
-    pprint(vacancy_statistic)
-    """
+    print_vacancies_stat(hh_vacancies_stat, 'HeadHunter Moscow')
 
 
 if __name__ == '__main__':
