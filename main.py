@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from terminaltables import AsciiTable
 
 
-def get_hh_vacancies(search_text):
+def get_hh_vacancies(search_text, town=1):
     url = 'https://api.hh.ru/vacancies'
 
     result_vacancies = []
@@ -22,7 +22,7 @@ def get_hh_vacancies(search_text):
         params = {
             'text': search_text,
             'search_field': 'name',
-            'area': 1,
+            'area': town,
             'page': page,
         }
 
@@ -61,6 +61,18 @@ def vacancy_count(search_text):
     return response.json()
 
 
+def calculate_salary(salary_from, salary_to):
+
+    if salary_from and salary_to:
+        return (salary_from + salary_to) // 2
+
+    if salary_from and not salary_to:
+        return int(salary_from * 1.2)
+
+    if not salary_from and salary_to:
+        return int(salary_to * 0.8)
+
+
 def predict_rub_salary(vacancies):
 
     average_salary = []
@@ -75,22 +87,17 @@ def predict_rub_salary(vacancies):
             if salary['currency'] != 'RUR':
                 continue
 
-            if salary['from'] and salary['to']:
-                average_salary.append((salary['from'] + salary['to'])//2)
+            average_salary.append(
+                calculate_salary(salary['from'], salary['to'])
+            )
 
-            if salary['from'] and not salary['to']:
-                average_salary.append(int(salary['from']*1.2))
-
-            if not salary['from'] and salary['to']:
-                average_salary.append(int(salary['to']*0.8))
-
-    if len(average_salary) <= 0:
+    if not len(average_salary):
         return 0, 1
 
     return int(mean(average_salary)), len(average_salary)
 
 
-def superjob_vacancies(token, keyword):
+def get_superjob_vacancies(token, keyword, town=4, count_on_page=20):
 
     url = 'https://api.superjob.ru/2.0/vacancies/'
 
@@ -103,7 +110,7 @@ def superjob_vacancies(token, keyword):
 
     for page in count(0):
         params = {
-            'town': 4,
+            'town': town,
             'keywords': {keyword},
             'page': page,
         }
@@ -111,68 +118,61 @@ def superjob_vacancies(token, keyword):
         response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
 
-        vacancy_page_json = response.json()
+        vacancy_page = response.json()
 
-        vacancy_pages.append(vacancy_page_json)
+        vacancy_pages.append(vacancy_page)
 
-        if page >= vacancy_page_json['total']/((page+1)*20):
+        if page >= vacancy_page['total']/((page+1)*count_on_page):
             break
 
-    return vacancy_pages, vacancy_page_json['total']
+    return vacancy_pages, vacancy_page['total']
 
 
 def predict_rub_salary_for_superJob(vacancy_pages):
 
-    salary = []
-    vacancy_proceeded_count = 0
+    average_salary = []
 
     for vacancy_page in vacancy_pages:
         for vacancy in vacancy_page['objects']:
             if vacancy['currency'] != 'rub':
                 continue
 
-            payment_from = vacancy['payment_from']
-            payment_to = vacancy['payment_to']
-            if payment_from != 0 and payment_to != 0:
-                salary.append((payment_from+payment_to)//2)
-                vacancy_proceeded_count += 1
-            elif payment_from != 0 and payment_to == 0:
-                salary.append(payment_from*1.2)
-                vacancy_proceeded_count += 1
-            elif payment_from == 0 and payment_to != 0:
-                salary.append(payment_to*0.8)
-                vacancy_proceeded_count += 1
-            else:
+            avg_salary = calculate_salary(
+                vacancy['payment_from'], vacancy['payment_to']
+            )
+
+            if not avg_salary:
                 continue
 
-    if len(salary) <= 0:
+            average_salary.append(avg_salary)
+
+    if not len(average_salary):
         return 0, 1
 
-    return int(mean(salary)), vacancy_proceeded_count
+    return int(mean(average_salary)), len(average_salary)
 
 
 def print_vacancies_stat(vacancies_stat, table_title):
 
-    data = list()
-    data.append(
+    table_data = [
         [
             'Языки программирования',
             'Вакансий найдено',
             'Вакансий обработано',
             'Средняя зарплата'
         ]
-    )
+    ]
 
-    for profession, value in vacancies_stat.items():
-        data.append(
+    for profession, statistics_data in vacancies_stat.items():
+        table_data.append(
             [profession,
-             value['vacancies_found'],
-             value['vacancies_processed'],
-             value['average_salary']
+             statistics_data['vacancies_found'],
+             statistics_data['vacancies_processed'],
+             statistics_data['average_salary']
              ]
         )
 
-    table = AsciiTable(data)
+    table = AsciiTable(table_data)
     table.title = table_title
     print(table.table)
 
@@ -199,7 +199,7 @@ def main():
     hh_vacancies_stat = {}
 
     for profession in professions:
-        superjob_all_vacancies, total_vacancies = superjob_vacancies(
+        superjob_all_vacancies, total_vacancies = get_superjob_vacancies(
             superjob_token, profession.strip()
         )
         avg_salary, vacancy_proceeded_count = predict_rub_salary_for_superJob(
