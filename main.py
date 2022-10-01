@@ -111,7 +111,7 @@ def get_superjob_vacancies(token, keyword, town=4, count_on_page=20):
     for page in count(0):
         params = {
             'town': town,
-            'keywords': {keyword},
+            'keywords': keyword,
             'page': page,
         }
 
@@ -205,12 +205,12 @@ def main():
         avg_salary, vacancy_proceeded_count = predict_rub_salary_for_superJob(
             superjob_all_vacancies
         )
-        vacancy_sat = {
+        vacancy_stat = {
             "vacancies_found": total_vacancies,
             "vacancies_processed": vacancy_proceeded_count,
             "average_salary": avg_salary,
         }
-        superjob_vacancies_stat.update({profession: vacancy_sat})
+        superjob_vacancies_stat[profession] = vacancy_stat
 
     print_vacancies_stat(superjob_vacancies_stat, 'SuperJob Moscow')
 
@@ -226,7 +226,7 @@ def main():
             "vacancies_processed": profession_vacancies_processed,
             "average_salary": profession_average_salary
         }
-        hh_vacancies_stat.update({profession: profession_stat})
+        hh_vacancies_stat[profession] = profession_stat
 
     print_vacancies_stat(hh_vacancies_stat, 'HeadHunter Moscow')
 
