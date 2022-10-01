@@ -92,7 +92,7 @@ def predict_rub_salary(vacancies):
             )
 
     if not len(average_salary):
-        return 0, 1
+        return 0, 0
 
     return int(mean(average_salary)), len(average_salary)
 
@@ -147,14 +147,14 @@ def predict_rub_salary_for_superJob(vacancy_pages):
             average_salary.append(avg_salary)
 
     if not len(average_salary):
-        return 0, 1
+        return 0, 0
 
     return int(mean(average_salary)), len(average_salary)
 
 
 def print_vacancies_stat(vacancies_stat, table_title):
 
-    table_data = [
+    profession_statistic = [
         [
             'Языки программирования',
             'Вакансий найдено',
@@ -163,16 +163,16 @@ def print_vacancies_stat(vacancies_stat, table_title):
         ]
     ]
 
-    for profession, statistics_data in vacancies_stat.items():
-        table_data.append(
+    for profession, statistic in vacancies_stat.items():
+        profession_statistic.append(
             [profession,
-             statistics_data['vacancies_found'],
-             statistics_data['vacancies_processed'],
-             statistics_data['average_salary']
+             statistic['vacancies_found'],
+             statistic['vacancies_processed'],
+             statistic['average_salary']
              ]
         )
 
-    table = AsciiTable(table_data)
+    table = AsciiTable(profession_statistic)
     table.title = table_title
     print(table.table)
 
@@ -221,6 +221,7 @@ def main():
         profession_average_salary, profession_vacancies_processed = predict_rub_salary(
             profession_vacancies
         )
+
         profession_stat = {
             "vacancies_found": profession_total_vacancies,
             "vacancies_processed": profession_vacancies_processed,
